@@ -128,6 +128,7 @@ export default function ModelViewer({ modelUrl }: ModelViewerProps) {
         {/* Grid floor */}
         <gridHelper args={[20, 40, "#1a3a4a", "#0d1f2a"]} position={[0, 0, 0]} />
       </Canvas>
+      <LoadingOverlay />
     </div>
   );
 }
