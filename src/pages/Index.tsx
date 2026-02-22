@@ -2,6 +2,7 @@ import { useState } from "react";
 import ModelViewer from "@/components/ModelViewer";
 import ChatPanel from "@/components/ChatPanel";
 import UploadButton from "@/components/UploadButton";
+import ModelSidebar from "@/components/ModelSidebar";
 import { Cpu } from "lucide-react";
 
 const Index = () => {
@@ -22,6 +23,9 @@ const Index = () => {
 
       {/* Main content */}
       <div className="flex flex-1 min-h-0">
+        {/* Sidebar */}
+        <ModelSidebar onSelectModel={setModelUrl} activeUrl={modelUrl} />
+
         {/* 3D Viewer */}
         <div className="flex-1 relative">
           <ModelViewer modelUrl={modelUrl} />
@@ -31,7 +35,7 @@ const Index = () => {
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div className="text-center space-y-3 opacity-60">
                 <p className="text-muted-foreground text-sm">
-                  Upload a <span className="text-primary font-mono">.glb</span> file to begin
+                  Select a demo model or upload a <span className="text-primary font-mono">.glb</span> file
                 </p>
               </div>
             </div>
