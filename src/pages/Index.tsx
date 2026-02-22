@@ -1,12 +1,19 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import ModelViewer from "@/components/ModelViewer";
 import ChatPanel from "@/components/ChatPanel";
 import UploadButton from "@/components/UploadButton";
 import ModelSidebar from "@/components/ModelSidebar";
+import ModelInspector from "@/components/ModelInspector";
 import { Cpu } from "lucide-react";
+import * as THREE from "three";
 
 const Index = () => {
   const [modelUrl, setModelUrl] = useState<string | null>(null);
+  const [loadedScene, setLoadedScene] = useState<THREE.Object3D | null>(null);
+
+  const handleSceneReady = useCallback((scene: THREE.Object3D | null) => {
+    setLoadedScene(scene);
+  }, []);
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-background">
@@ -28,7 +35,7 @@ const Index = () => {
 
         {/* 3D Viewer */}
         <div className="flex-1 relative">
-          <ModelViewer modelUrl={modelUrl} />
+          <ModelViewer modelUrl={modelUrl} onSceneReady={handleSceneReady} />
 
           {/* Overlay hint when no model */}
           {!modelUrl && (
@@ -42,9 +49,18 @@ const Index = () => {
           )}
         </div>
 
-        {/* Chat Panel */}
-        <div className="w-[380px] p-3 pl-0 flex-shrink-0">
-          <ChatPanel />
+        {/* Right panel: Inspector + Chat stacked */}
+        <div className="w-[380px] flex flex-col flex-shrink-0 border-l border-border/40">
+          {/* Model Inspector — collapsible top section */}
+          {loadedScene && (
+            <div className="h-[50%] border-b border-border/40 overflow-hidden">
+              <ModelInspector scene={loadedScene} />
+            </div>
+          )}
+          {/* Chat Panel */}
+          <div className={`${loadedScene ? "h-[50%]" : "h-full"} p-3`}>
+            <ChatPanel />
+          </div>
         </div>
       </div>
     </div>

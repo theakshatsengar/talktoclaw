@@ -1,11 +1,18 @@
-import { useRef, useEffect, useMemo, Suspense } from "react";
+import { useRef, useEffect, useMemo, Suspense, useState, useCallback } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls, useGLTF, Environment, ContactShadows, useProgress } from "@react-three/drei";
 import * as THREE from "three";
 import { Progress } from "@/components/ui/progress";
+import {
+  ArrowUp, ArrowDown, ArrowLeft, ArrowRight,
+  ZoomIn, ZoomOut, RotateCcw, Move,
+} from "lucide-react";
 
 interface ModelProps {
   url: string;
+  userOffset: [number, number, number];
+  userScale: number;
+  onSceneReady?: (scene: THREE.Object3D) => void;
 }
 
 function findBoneByNames(skeleton: THREE.Bone[], names: string[]): THREE.Bone | null {
@@ -37,31 +44,57 @@ function getMorphTargets(object: THREE.Object3D) {
   return targets;
 }
 
-function Model({ url }: ModelProps) {
+/** Compute a normalisation transform so any model fits within ~2.5 units, bottom at y=0 */
+function computeNormalisation(object: THREE.Object3D) {
+  object.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(object);
+
+  // Fallback: if bounding box is empty/degenerate, try computing from geometry directly
+  if (box.isEmpty()) {
+    object.traverse((child) => {
+      const mesh = child as THREE.Mesh;
+      if (mesh.isMesh && mesh.geometry) {
+        mesh.geometry.computeBoundingBox();
+        if (mesh.geometry.boundingBox) {
+          box.expandByObject(mesh);
+        }
+      }
+    });
+  }
+
+  const center = box.getCenter(new THREE.Vector3());
+  const size = box.getSize(new THREE.Vector3());
+  const maxDim = Math.max(size.x, size.y, size.z);
+  const scale = maxDim > 0.001 ? 2.5 / maxDim : 1;
+
+  return {
+    scale,
+    offsetX: -center.x * scale,
+    offsetY: -box.min.y * scale,
+    offsetZ: -center.z * scale,
+  };
+}
+
+function Model({ url, userOffset, userScale, onSceneReady }: ModelProps) {
   const { scene } = useGLTF(url);
-  const clonedScene = useMemo(() => scene.clone(true), [scene]);
-  const modelRef = useRef<THREE.Group>(null);
-  const baseRotation = useRef(0);
+  const groupRef = useRef<THREE.Group>(null);
   const headBone = useRef<THREE.Bone | null>(null);
   const jawBone = useRef<THREE.Bone | null>(null);
   const mouthMorphs = useRef<{ mesh: THREE.Mesh; index: number }[]>([]);
   const headInitialRot = useRef<THREE.Euler | null>(null);
   const jawInitialRot = useRef<THREE.Euler | null>(null);
 
+  // Compute normalisation once per scene
+  const norm = useMemo(() => computeNormalisation(scene), [scene]);
+
+  // Report scene to parent for inspector
   useEffect(() => {
-    // Center and scale the model
-    const box = new THREE.Box3().setFromObject(clonedScene);
-    const center = box.getCenter(new THREE.Vector3());
-    const size = box.getSize(new THREE.Vector3());
-    const maxDim = Math.max(size.x, size.y, size.z);
-    const scale = 2.5 / maxDim;
+    onSceneReady?.(scene);
+  }, [scene, onSceneReady]);
 
-    clonedScene.position.copy(center).multiplyScalar(-1);
-    clonedScene.scale.setScalar(scale);
-    clonedScene.position.y -= box.min.y * scale;
-
-    // Find head and jaw bones
-    const bones = getAllBones(clonedScene);
+  // Find bones & morph targets once
+  useEffect(() => {
+    const bones = getAllBones(scene);
     const head = findBoneByNames(bones, ["head"]);
     const jaw = findBoneByNames(bones, ["jaw", "chin", "mouth"]);
 
@@ -70,22 +103,20 @@ function Model({ url }: ModelProps) {
     headInitialRot.current = head ? head.rotation.clone() : null;
     jawInitialRot.current = jaw ? jaw.rotation.clone() : null;
 
-    // Find mouth-related morph targets for lip sync
-    const morphs = getMorphTargets(clonedScene);
+    const morphs = getMorphTargets(scene);
     mouthMorphs.current = morphs
       .filter((m) => {
         const n = m.name.toLowerCase();
         return n.includes("mouth") || n.includes("jaw") || n.includes("open") || n.includes("aa") || n.includes("oh");
       })
       .map((m) => ({ mesh: m.mesh, index: m.index }));
-  }, [clonedScene]);
+  }, [scene]);
 
   useFrame(({ clock }) => {
-    if (!modelRef.current) return;
     const t = clock.getElapsedTime();
     const isSpeaking = speechSynthesis.speaking;
 
-    // Head animation
+    // Head bone animation
     if (headBone.current && headInitialRot.current) {
       const base = headInitialRot.current;
       if (isSpeaking) {
@@ -96,17 +127,6 @@ function Model({ url }: ModelProps) {
         headBone.current.rotation.x = base.x + Math.sin(t * 0.8) * 0.015;
         headBone.current.rotation.y = base.y + Math.sin(t * 0.5) * 0.01;
         headBone.current.rotation.z = base.z;
-      }
-    } else {
-      // Fallback: rotate whole model group
-      if (isSpeaking) {
-        baseRotation.current += 0.008;
-        modelRef.current.rotation.y = Math.sin(baseRotation.current * 3) * 0.1;
-        modelRef.current.rotation.x = Math.sin(baseRotation.current * 5) * 0.04;
-      } else {
-        baseRotation.current += 0.002;
-        modelRef.current.rotation.y = Math.sin(baseRotation.current) * 0.02;
-        modelRef.current.rotation.x = 0;
       }
     }
 
@@ -121,23 +141,30 @@ function Model({ url }: ModelProps) {
     }
 
     // Morph target lip sync
-    if (mouthMorphs.current.length > 0) {
-      for (const { mesh, index } of mouthMorphs.current) {
-        if (mesh.morphTargetInfluences) {
-          if (isSpeaking) {
-            mesh.morphTargetInfluences[index] =
-              Math.sin(t * 10 + index) * 0.3 + 0.35;
-          } else {
-            mesh.morphTargetInfluences[index] *= 0.9; // smooth decay
-          }
+    for (const { mesh, index } of mouthMorphs.current) {
+      if (mesh.morphTargetInfluences) {
+        if (isSpeaking) {
+          mesh.morphTargetInfluences[index] = Math.sin(t * 10 + index) * 0.3 + 0.35;
+        } else {
+          mesh.morphTargetInfluences[index] *= 0.9;
         }
       }
     }
   });
 
+  // Final combined transform: userOffset + norm offset, userScale * norm scale
+  const combinedScale = userScale * norm.scale;
+  const posX = userOffset[0] + norm.offsetX * userScale;
+  const posY = userOffset[1] + norm.offsetY * userScale;
+  const posZ = userOffset[2] + norm.offsetZ * userScale;
+
   return (
-    <group ref={modelRef}>
-      <primitive object={clonedScene} />
+    <group
+      ref={groupRef}
+      position={[posX, posY, posZ]}
+      scale={[combinedScale, combinedScale, combinedScale]}
+    >
+      <primitive object={scene} />
     </group>
   );
 }
@@ -167,6 +194,7 @@ function PlaceholderScene() {
 
 interface ModelViewerProps {
   modelUrl: string | null;
+  onSceneReady?: (scene: THREE.Object3D | null) => void;
 }
 
 function LoadingOverlay() {
@@ -183,7 +211,42 @@ function LoadingOverlay() {
   );
 }
 
-export default function ModelViewer({ modelUrl }: ModelViewerProps) {
+export default function ModelViewer({ modelUrl, onSceneReady }: ModelViewerProps) {
+  const [offset, setOffset] = useState<[number, number, number]>([0, 0, 0]);
+  const [userScale, setUserScale] = useState(1);
+
+  // Reset when model changes
+  useEffect(() => {
+    setOffset([0, 0, 0]);
+    setUserScale(1);
+    if (!modelUrl) onSceneReady?.(null);
+  }, [modelUrl, onSceneReady]);
+
+  const STEP = 0.15;
+  const MIN_SCALE = 0.01;
+  const MAX_SCALE = 50;
+
+  const move = useCallback(
+    (dx: number, dy: number, dz: number) =>
+      setOffset((prev) => [prev[0] + dx, prev[1] + dy, prev[2] + dz]),
+    [],
+  );
+  const scaleUp = useCallback(
+    () => setUserScale((s) => Math.min(MAX_SCALE, s * 1.2)),
+    [],
+  );
+  const scaleDown = useCallback(
+    () => setUserScale((s) => Math.max(MIN_SCALE, s / 1.2)),
+    [],
+  );
+  const reset = useCallback(() => {
+    setOffset([0, 0, 0]);
+    setUserScale(1);
+  }, []);
+
+  const btnClass =
+    "flex items-center justify-center w-8 h-8 rounded-lg bg-background/70 border border-border/50 text-foreground/80 hover:bg-primary/20 hover:text-primary transition-colors active:scale-90";
+
   return (
     <div className="w-full h-full relative">
       <Canvas
@@ -197,7 +260,7 @@ export default function ModelViewer({ modelUrl }: ModelViewerProps) {
 
         <Suspense fallback={null}>
           {modelUrl ? (
-            <Model url={modelUrl} key={modelUrl} />
+            <Model url={modelUrl} key={modelUrl} userOffset={offset} userScale={userScale} onSceneReady={onSceneReady} />
           ) : (
             <PlaceholderScene />
           )}
@@ -212,15 +275,70 @@ export default function ModelViewer({ modelUrl }: ModelViewerProps) {
         </Suspense>
 
         <OrbitControls
-          enablePan={false}
-          minDistance={1.5}
-          maxDistance={8}
+          enablePan={true}
+          minDistance={0.05}
+          maxDistance={100}
           target={[0, 0.8, 0]}
+          zoomSpeed={1.2}
+          panSpeed={0.8}
+          enableDamping
+          dampingFactor={0.12}
         />
 
         <gridHelper args={[20, 40, "#1a3a4a", "#0d1f2a"]} position={[0, 0, 0]} />
       </Canvas>
+
       <LoadingOverlay />
+
+      {/* On-screen controls */}
+      {modelUrl && (
+        <div className="absolute bottom-4 left-4 z-20 flex flex-col gap-2 select-none">
+          {/* Move pad */}
+          <div className="glass rounded-xl p-1.5 flex flex-col items-center gap-0.5">
+            <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider mb-0.5 flex items-center gap-1">
+              <Move size={10} /> Move
+            </span>
+            <button className={btnClass} onClick={() => move(0, STEP, 0)} title="Move up">
+              <ArrowUp size={14} />
+            </button>
+            <div className="flex gap-0.5">
+              <button className={btnClass} onClick={() => move(-STEP, 0, 0)} title="Move left">
+                <ArrowLeft size={14} />
+              </button>
+              <button className={btnClass} onClick={() => move(0, -STEP, 0)} title="Move down">
+                <ArrowDown size={14} />
+              </button>
+              <button className={btnClass} onClick={() => move(STEP, 0, 0)} title="Move right">
+                <ArrowRight size={14} />
+              </button>
+            </div>
+          </div>
+
+          {/* Scale controls */}
+          <div className="glass rounded-xl p-1.5 flex flex-col items-center gap-1">
+            <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
+              Scale ({userScale.toFixed(1)}×)
+            </span>
+            <div className="flex gap-0.5">
+              <button className={btnClass} onClick={scaleDown} title="Scale down">
+                <ZoomOut size={14} />
+              </button>
+              <button className={btnClass} onClick={scaleUp} title="Scale up">
+                <ZoomIn size={14} />
+              </button>
+            </div>
+          </div>
+
+          {/* Reset */}
+          <button
+            className="glass rounded-xl px-3 py-1.5 flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors"
+            onClick={reset}
+            title="Reset position & scale"
+          >
+            <RotateCcw size={12} /> Reset
+          </button>
+        </div>
+      )}
     </div>
   );
 }
