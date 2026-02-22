@@ -1,7 +1,8 @@
-import { useRef, useEffect, useState, Suspense } from "react";
+import { useRef, useEffect, Suspense } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { OrbitControls, useGLTF, Environment, ContactShadows } from "@react-three/drei";
+import { OrbitControls, useGLTF, Environment, ContactShadows, useProgress } from "@react-three/drei";
 import * as THREE from "three";
+import { Progress } from "@/components/ui/progress";
 
 interface ModelProps {
   url: string;
@@ -75,9 +76,23 @@ interface ModelViewerProps {
   modelUrl: string | null;
 }
 
+function LoadingOverlay() {
+  const { progress, active } = useProgress();
+  if (!active) return null;
+  return (
+    <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+      <div className="w-64 space-y-3 text-center">
+        <p className="text-sm font-medium text-foreground">Loading model…</p>
+        <Progress value={progress} className="h-2" />
+        <p className="text-xs text-muted-foreground">{Math.round(progress)}%</p>
+      </div>
+    </div>
+  );
+}
+
 export default function ModelViewer({ modelUrl }: ModelViewerProps) {
   return (
-    <div className="w-full h-full">
+    <div className="w-full h-full relative">
       <Canvas
         camera={{ position: [0, 1, 4], fov: 50 }}
         gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping }}
@@ -113,6 +128,7 @@ export default function ModelViewer({ modelUrl }: ModelViewerProps) {
         {/* Grid floor */}
         <gridHelper args={[20, 40, "#1a3a4a", "#0d1f2a"]} position={[0, 0, 0]} />
       </Canvas>
+      <LoadingOverlay />
     </div>
   );
 }
