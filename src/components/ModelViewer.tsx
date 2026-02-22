@@ -1,7 +1,8 @@
-import { useRef, useEffect, useState, Suspense } from "react";
+import { useRef, useEffect, Suspense } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { OrbitControls, useGLTF, Environment, ContactShadows } from "@react-three/drei";
+import { OrbitControls, useGLTF, Environment, ContactShadows, useProgress } from "@react-three/drei";
 import * as THREE from "three";
+import { Progress } from "@/components/ui/progress";
 
 interface ModelProps {
   url: string;
