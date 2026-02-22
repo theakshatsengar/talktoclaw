@@ -76,9 +76,23 @@ interface ModelViewerProps {
   modelUrl: string | null;
 }
 
+function LoadingOverlay() {
+  const { progress, active } = useProgress();
+  if (!active) return null;
+  return (
+    <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+      <div className="w-64 space-y-3 text-center">
+        <p className="text-sm font-medium text-foreground">Loading model…</p>
+        <Progress value={progress} className="h-2" />
+        <p className="text-xs text-muted-foreground">{Math.round(progress)}%</p>
+      </div>
+    </div>
+  );
+}
+
 export default function ModelViewer({ modelUrl }: ModelViewerProps) {
   return (
-    <div className="w-full h-full">
+    <div className="w-full h-full relative">
       <Canvas
         camera={{ position: [0, 1, 4], fov: 50 }}
         gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping }}
