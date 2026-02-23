@@ -21,11 +21,27 @@ const AI_RESPONSES = [
   "Your words resonate through my neural pathways.",
 ];
 
+// Preload voices — browsers load them async, this ensures getVoices() is populated
+if (typeof window !== "undefined" && speechSynthesis.onvoiceschanged !== undefined) {
+  speechSynthesis.onvoiceschanged = () => { speechSynthesis.getVoices(); };
+}
+
 function speak(text: string) {
   speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
+
+  // Pick a female voice (prefer English)
+  const voices = speechSynthesis.getVoices();
+  const femaleVoice =
+    voices.find((v) => /female/i.test(v.name) && /en/i.test(v.lang)) ||
+    voices.find((v) => /zira|jenny|hazel|susan|samantha|karen|victoria|fiona|moira/i.test(v.name)) ||
+    voices.find((v) => /female/i.test(v.name)) ||
+    voices.find((v) => /woman|girl/i.test(v.name)) ||
+    null;
+  if (femaleVoice) utterance.voice = femaleVoice;
+
   utterance.rate = 0.9;
-  utterance.pitch = 0.8;
+  utterance.pitch = 1.1;
   utterance.volume = 1;
   speechSynthesis.speak(utterance);
 }

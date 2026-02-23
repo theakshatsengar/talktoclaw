@@ -1,12 +1,259 @@
 import { useRef, useEffect, useMemo, Suspense, useState, useCallback } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, useGLTF, Environment, ContactShadows, useProgress } from "@react-three/drei";
 import * as THREE from "three";
 import { Progress } from "@/components/ui/progress";
+import EnvironmentScene from "@/components/EnvironmentScenes";
 import {
   ArrowUp, ArrowDown, ArrowLeft, ArrowRight,
   ZoomIn, ZoomOut, RotateCcw, Move,
+  Sun, Moon, Cloud, TreePine, Building2, Flame, Snowflake, Waves, Mountain, Home,
 } from "lucide-react";
+
+/* ------------------------------------------------------------------ */
+/*  Environment presets                                                */
+/* ------------------------------------------------------------------ */
+
+type EnvPresetKey = typeof ENV_PRESETS[number]["key"];
+
+const ENV_PRESETS = [
+  {
+    key: "studio",
+    label: "Studio",
+    icon: Building2,
+    drei: "city" as const,
+    ambientIntensity: 0.5,
+    dirColor: "#ffffff",
+    dirIntensity: 1.2,
+    fillColor: "#88ccff",
+    fillIntensity: 0.4,
+    accentColor: "hsl(185, 80%, 50%)",
+    bgColor: "#1a1a2e",
+    shadowOpacity: 0.4,
+    fogColor: null as string | null,
+    fogNear: 20,
+    fogFar: 60,
+  },
+  {
+    key: "sunset",
+    label: "Sunset",
+    icon: Sun,
+    drei: "sunset" as const,
+    ambientIntensity: 0.35,
+    dirColor: "#ffa040",
+    dirIntensity: 1.5,
+    fillColor: "#ff6622",
+    fillIntensity: 0.3,
+    accentColor: "#ffaa44",
+    bgColor: "#1a0a04",
+    shadowOpacity: 0.5,
+    fogColor: "#b85a20",
+    fogNear: 20,
+    fogFar: 70,
+  },
+  {
+    key: "night",
+    label: "Night",
+    icon: Moon,
+    drei: "night" as const,
+    ambientIntensity: 0.15,
+    dirColor: "#aabbff",
+    dirIntensity: 0.4,
+    fillColor: "#4455aa",
+    fillIntensity: 0.2,
+    accentColor: "#6677cc",
+    bgColor: "#050510",
+    shadowOpacity: 0.2,
+    fogColor: "#050515",
+    fogNear: 25,
+    fogFar: 80,
+  },
+  {
+    key: "dawn",
+    label: "Dawn",
+    icon: Cloud,
+    drei: "dawn" as const,
+    ambientIntensity: 0.4,
+    dirColor: "#ffd4a0",
+    dirIntensity: 1.0,
+    fillColor: "#aaccee",
+    fillIntensity: 0.35,
+    accentColor: "#e8a060",
+    bgColor: "#120c08",
+    shadowOpacity: 0.35,
+    fogColor: "#aa8866",
+    fogNear: 25,
+    fogFar: 80,
+  },
+  {
+    key: "forest",
+    label: "Forest",
+    icon: TreePine,
+    drei: "forest" as const,
+    ambientIntensity: 0.3,
+    dirColor: "#ccffaa",
+    dirIntensity: 0.8,
+    fillColor: "#44aa44",
+    fillIntensity: 0.3,
+    accentColor: "#88cc66",
+    bgColor: "#060f06",
+    shadowOpacity: 0.3,
+    fogColor: "#1a3a1a",
+    fogNear: 15,
+    fogFar: 50,
+  },
+  {
+    key: "warehouse",
+    label: "Warehouse",
+    icon: Building2,
+    drei: "warehouse" as const,
+    ambientIntensity: 0.6,
+    dirColor: "#ffffff",
+    dirIntensity: 1.0,
+    fillColor: "#cccccc",
+    fillIntensity: 0.5,
+    accentColor: "#aaaaaa",
+    bgColor: "#111111",
+    shadowOpacity: 0.5,
+    fogColor: "#1a1a1a",
+    fogNear: 20,
+    fogFar: 50,
+  },
+  {
+    key: "arctic",
+    label: "Arctic",
+    icon: Snowflake,
+    drei: "city" as const,
+    ambientIntensity: 0.7,
+    dirColor: "#ddeeff",
+    dirIntensity: 1.3,
+    fillColor: "#aaccff",
+    fillIntensity: 0.5,
+    accentColor: "#88bbff",
+    bgColor: "#0a1520",
+    shadowOpacity: 0.3,
+    fogColor: "#aabbcc",
+    fogNear: 20,
+    fogFar: 70,
+  },
+  {
+    key: "lava",
+    label: "Lava",
+    icon: Flame,
+    drei: "city" as const,
+    ambientIntensity: 0.2,
+    dirColor: "#ff4400",
+    dirIntensity: 1.0,
+    fillColor: "#ff2200",
+    fillIntensity: 0.3,
+    accentColor: "#ff6600",
+    bgColor: "#0a0200",
+    shadowOpacity: 0.4,
+    fogColor: "#331000",
+    fogNear: 15,
+    fogFar: 50,
+  },
+  {
+    key: "ocean",
+    label: "Ocean",
+    icon: Waves,
+    drei: "city" as const,
+    ambientIntensity: 0.35,
+    dirColor: "#88ddff",
+    dirIntensity: 0.9,
+    fillColor: "#2288aa",
+    fillIntensity: 0.35,
+    accentColor: "#44aacc",
+    bgColor: "#030c14",
+    shadowOpacity: 0.3,
+    fogColor: "#1a5566",
+    fogNear: 20,
+    fogFar: 60,
+  },
+  {
+    key: "moon",
+    label: "Moon",
+    icon: Moon,
+    drei: "night" as const,
+    ambientIntensity: 0.2,
+    dirColor: "#cccccc",
+    dirIntensity: 0.6,
+    fillColor: "#666688",
+    fillIntensity: 0.2,
+    accentColor: "#8888aa",
+    bgColor: "#020208",
+    shadowOpacity: 0.15,
+    fogColor: null,
+    fogNear: 30,
+    fogFar: 80,
+  },
+  {
+    key: "mars",
+    label: "Mars",
+    icon: Mountain,
+    drei: "sunset" as const,
+    ambientIntensity: 0.25,
+    dirColor: "#ffaa66",
+    dirIntensity: 0.9,
+    fillColor: "#cc6633",
+    fillIntensity: 0.25,
+    accentColor: "#dd7744",
+    bgColor: "#1a0800",
+    shadowOpacity: 0.3,
+    fogColor: "#884422",
+    fogNear: 15,
+    fogFar: 55,
+  },
+  {
+    key: "room",
+    label: "Room",
+    icon: Home,
+    drei: "apartment" as const,
+    ambientIntensity: 0.35,
+    dirColor: "#fffde0",
+    dirIntensity: 0.6,
+    fillColor: "#ffeecc",
+    fillIntensity: 0.3,
+    accentColor: "#ffddaa",
+    bgColor: "#1a150e",
+    shadowOpacity: 0.35,
+    fogColor: null,
+    fogNear: 20,
+    fogFar: 50,
+  },
+] as const;
+
+function getPreset(key: string) {
+  return ENV_PRESETS.find((p) => p.key === key) ?? ENV_PRESETS[0];
+}
+
+/** Applies scene background color inside the Canvas */
+function SceneBg({ color }: { color: string | null }) {
+  const { scene } = useThree();
+  useEffect(() => {
+    if (color) {
+      scene.background = new THREE.Color(color);
+    } else {
+      scene.background = null;
+    }
+    return () => { scene.background = null; };
+  }, [color, scene]);
+  return null;
+}
+
+/** Controls scene fog based on environment preset */
+function SceneFog({ color, near, far }: { color: string | null; near: number; far: number }) {
+  const { scene } = useThree();
+  useEffect(() => {
+    if (color) {
+      scene.fog = new THREE.Fog(color, near, far);
+    } else {
+      scene.fog = null;
+    }
+    return () => { scene.fog = null; };
+  }, [color, near, far, scene]);
+  return null;
+}
 
 interface ModelProps {
   url: string;
@@ -214,6 +461,8 @@ function LoadingOverlay() {
 export default function ModelViewer({ modelUrl, onSceneReady }: ModelViewerProps) {
   const [offset, setOffset] = useState<[number, number, number]>([0, 0, 0]);
   const [userScale, setUserScale] = useState(1);
+  const [envKey, setEnvKey] = useState<string>("studio");
+  const env = getPreset(envKey);
 
   // Reset when model changes
   useEffect(() => {
@@ -253,10 +502,13 @@ export default function ModelViewer({ modelUrl, onSceneReady }: ModelViewerProps
         camera={{ position: [0, 1.2, 3.5], fov: 45 }}
         gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping }}
       >
-        <ambientLight intensity={0.5} />
-        <directionalLight position={[5, 5, 5]} intensity={1.2} castShadow />
-        <directionalLight position={[-3, 3, -3]} intensity={0.4} color="#88ccff" />
-        <pointLight position={[0, 2, 0]} intensity={0.5} color="hsl(185, 80%, 50%)" />
+        <SceneBg color={env.bgColor} />
+        <SceneFog color={env.fogColor} near={env.fogNear} far={env.fogFar} />
+
+        <ambientLight intensity={env.ambientIntensity} />
+        <directionalLight position={[5, 5, 5]} intensity={env.dirIntensity} color={env.dirColor} castShadow />
+        <directionalLight position={[-3, 3, -3]} intensity={env.fillIntensity} color={env.fillColor} />
+        <pointLight position={[0, 2, 0]} intensity={0.5} color={env.accentColor} />
 
         <Suspense fallback={null}>
           {modelUrl ? (
@@ -266,12 +518,13 @@ export default function ModelViewer({ modelUrl, onSceneReady }: ModelViewerProps
           )}
           <ContactShadows
             position={[0, -0.01, 0]}
-            opacity={0.4}
+            opacity={env.shadowOpacity}
             scale={10}
             blur={2}
             far={4}
           />
-          <Environment preset="city" />
+          <Environment preset={env.drei} background={false} />
+          <EnvironmentScene envKey={envKey} />
         </Suspense>
 
         <OrbitControls
@@ -284,11 +537,34 @@ export default function ModelViewer({ modelUrl, onSceneReady }: ModelViewerProps
           enableDamping
           dampingFactor={0.12}
         />
-
-        <gridHelper args={[20, 40, "#1a3a4a", "#0d1f2a"]} position={[0, 0, 0]} />
       </Canvas>
 
       <LoadingOverlay />
+
+      {/* Environment selector */}
+      <div className="absolute top-4 left-4 z-20 select-none">
+        <div className="glass rounded-xl p-1.5 flex flex-wrap gap-1 max-w-[320px]">
+          {ENV_PRESETS.map((p) => {
+            const Icon = p.icon;
+            const active = envKey === p.key;
+            return (
+              <button
+                key={p.key}
+                onClick={() => setEnvKey(p.key)}
+                title={p.label}
+                className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-all ${
+                  active
+                    ? "bg-primary/20 text-primary border border-primary/40"
+                    : "text-muted-foreground hover:text-foreground hover:bg-secondary/50 border border-transparent"
+                }`}
+              >
+                <Icon size={12} />
+                {p.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       {/* On-screen controls */}
       {modelUrl && (
